@@ -13,9 +13,9 @@ from geopy.distance import geodesic
 sys.path.append(os.path.abspath(__file__ + "/../../../.."))
 from basicts.data.transform import standard_transform
 
-
+"""
 def generate_adj_matrix(data, threshold_distance=500):
-    """Generate adjacency matrix based on geographical distances."""
+    
     num_sensors = len(data)
     adjacency_matrix = np.zeros((num_sensors, num_sensors))
     for i in range(num_sensors):
@@ -27,6 +27,7 @@ def generate_adj_matrix(data, threshold_distance=500):
                 adjacency_matrix[j, i] = 1
     return adjacency_matrix
 
+"""
 
 def generate_data(args: argparse.Namespace):
     """Preprocess and generate train/valid/test datasets for Vamos data."""
@@ -45,15 +46,21 @@ def generate_data(args: argparse.Namespace):
     if_rescale = not norm_each_channel
 
     # read data
-    df = pd.read_csv(data_file_path)
-    df['Datetime'] = pd.to_datetime(df['time'], format='%d-%m-%Y %H:%M')
-    df.set_index('Datetime', inplace=True)
+    df = pd.read_csv(data_file_path, parse_dates=['time'])
 
-    data = df[['speed', 'netTimeGap', 'occupiedTime', 'vehicleLength', 'trafficVolumeHeavy', 'trafficVolumeLight']].values
-    print("raw time series shape: {0}".format(data.shape))
+    # Pivot the DataFrame to get the required format
+    df = df.pivot(index='time', columns='s_idx', values='trafficVolumeLight')
+
+    # Replace NaN values with 0 (assuming missing values should be treated as 0)
+    df = df.fillna(0)
+
+    # Convert the pivoted DataFrame to a 3D numpy array
+    # Shape: (timesteps, sensors, 1)
+    data = df.values[:, :, np.newaxis]
+    print("Shape of the 3D numpy array:", data.shape)
 
     # split data
-    l, f = data.shape
+    l, n , f = data.shape
     num_samples = l - (history_seq_len + future_seq_len) + 1
     train_num = round(num_samples * train_ratio)
     valid_num = round(num_samples * valid_ratio)
@@ -104,12 +111,12 @@ def generate_data(args: argparse.Namespace):
     data["processed_data"] = processed_data
     with open(output_dir + "/data_in_{0}_out_{1}_rescale_{2}.pkl".format(history_seq_len, future_seq_len, if_rescale), "wb") as f:
         pickle.dump(data, f)
-
+"""
     # generate and save adjacency matrix
     adj_matrix = generate_adj_matrix(df)
     with open(output_dir + "/adj_mx.pkl", "wb") as f:
         pickle.dump(adj_matrix, f)
-
+"""
 
 if __name__ == "__main__":
     # sliding window size for generating history sequence and target sequence
