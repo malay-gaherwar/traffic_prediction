@@ -37,6 +37,8 @@ def generate_data(args: argparse.Namespace):
     history_seq_len = args.history_seq_len
     add_time_of_day = args.tod
     add_day_of_week = args.dow
+    add_day_of_month = args.dom
+    add_day_of_year = args.doy
     output_dir = args.output_dir
     train_ratio = args.train_ratio
     valid_ratio = args.valid_ratio
@@ -46,18 +48,27 @@ def generate_data(args: argparse.Namespace):
     if_rescale = not norm_each_channel
 
     # read data
-    df = pd.read_csv(data_file_path, parse_dates=['time'])
+    df = pd.read_csv(data_file_path)
 
-    # Pivot the DataFrame to get the required format
-    df = df.pivot(index='time', columns='s_idx', values='trafficVolumeLight')
+    # Convert 'time' column to datetime, with the correct format
+    df['Datetime'] = pd.to_datetime(df['time'], format='%Y-%m-%d %H:%M:%S')
 
-    # Replace NaN values with 0 (assuming missing values should be treated as 0)
-    df = df.fillna(0)
+    # Set 'Datetime' as the index
+    df.set_index('Datetime', inplace=True)
 
-    # Convert the pivoted DataFrame to a 3D numpy array
-    # Shape: (timesteps, sensors, 1)
-    data = df.values[:, :, np.newaxis]
-    print("Shape of the 3D numpy array:", data.shape)
+    # Keep only the s_idx and trafficVolumeLight columns
+    df = df[['s_idx', 'trafficVolumeLight']]
+
+    df_pivoted = df.pivot(columns='s_idx', values='trafficVolumeLight')
+
+    df_pivoted.columns.name = None
+    df_pivoted.index.name = None
+
+    df_resampled = df_pivoted.resample('5T').sum()
+    data = df_resampled.head(5000)
+
+    print("raw time series shape: ", data.shape)
+
 
     # split data
     l, n , f = data.shape
@@ -86,16 +97,28 @@ def generate_data(args: argparse.Namespace):
     # add temporal feature
     feature_list = [data_norm]
     if add_time_of_day:
-        tod = [i % steps_per_day / steps_per_day for i in range(data_norm.shape[0])]
-        tod = np.array(tod)
-        tod_tiled = np.tile(tod, [1, f, 1]).transpose((2, 1, 0))
+        tod = (
+            df.index.values - df.index.values.astype("datetime64[D]")) / np.timedelta64(1, "D")
+        tod_tiled = np.tile(tod, [1, n, 1]).transpose((2, 1, 0))
         feature_list.append(tod_tiled)
 
     if add_day_of_week:
-        dow = [(i // steps_per_day) % 7 / 7 for i in range(data_norm.shape[0])]
-        dow = np.array(dow)
-        dow_tiled = np.tile(dow, [1, f, 1]).transpose((2, 1, 0))
+        # numerical day_of_week
+        dow = df.index.dayofweek / 7
+        dow_tiled = np.tile(dow, [1, n, 1]).transpose((2, 1, 0))
         feature_list.append(dow_tiled)
+    
+    if add_day_of_month:
+        # numerical day_of_month
+        dom = (df.index.day - 1 ) / 31 # df.index.day starts from 1. We need to minus 1 to make it start from 0.
+        dom_tiled = np.tile(dom, [1, n, 1]).transpose((2, 1, 0))
+        feature_list.append(dom_tiled)
+
+    if add_day_of_year:
+        # numerical day_of_year
+        doy = (df.index.dayofyear - 1) / 366 # df.index.month starts from 1. We need to minus 1 to make it start from 0.
+        doy_tiled = np.tile(doy, [1, n, 1]).transpose((2, 1, 0))
+        feature_list.append(doy_tiled)
 
     processed_data = np.concatenate(feature_list, axis=-1)
 
@@ -131,6 +154,8 @@ if __name__ == "__main__":
     DATASET_NAME = "VAMOS"
     TOD = True                  # if add time_of_day feature
     DOW = True                  # if add day_of_week feature
+    DOM = True                  # if add day_of_month feature
+    DOY = True                  # if add day_of_year feature
 
     OUTPUT_DIR = "datasets/" + DATASET_NAME
     DATA_FILE_PATH = "datasets/raw_data/VAMOS/sample_vamos_data_2022_23.csv"
@@ -152,6 +177,10 @@ if __name__ == "__main__":
                         help="Add feature day_of_week.")
     parser.add_argument("--target_channel", type=list,
                         default=TARGET_CHANNEL, help="Selected channels.")
+    parser.add_argument("--dom", type=bool, default=DOM,
+                        help="Add feature day_of_week.")
+    parser.add_argument("--doy", type=bool, default=DOY,
+                        help="Add feature day_of_week.")
     parser.add_argument("--train_ratio", type=float,
                         default=TRAIN_RATIO, help="Train ratio")
     parser.add_argument("--valid_ratio", type=float,
