@@ -1,4 +1,3 @@
-Here is the revised and comprehensive installation guide without any mention of BasicTS:
 
 ```markdown
 ## Prerequisites
