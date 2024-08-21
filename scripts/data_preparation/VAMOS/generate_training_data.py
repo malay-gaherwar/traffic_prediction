@@ -66,12 +66,12 @@ def generate_data(args: argparse.Namespace):
     df_pivoted.index.name = None
 
     df_resampled = df_pivoted.resample('5T').sum()
-    data = df_resampled.head(5000)
+    # data = df_resampled.head(5000)
 
-    print("raw time series shape: ", data.shape)
+    print("raw time series shape: ", df_resampled.shape)
 
     # Reshape the data to add a third dimension for features
-    data = data.values[:, :, np.newaxis]  # Add a third dimension for features
+    data = df_resampled.values[:, :, np.newaxis]  # Add a third dimension for features
 
     # Now unpack the shape
     l, n, f = data.shape
@@ -169,7 +169,7 @@ if __name__ == "__main__":
     DOY = True  # if add day_of_year feature
 
     OUTPUT_DIR = "datasets/" + DATASET_NAME
-    DATA_FILE_PATH = "/home/ijaradar/Work/dl-trafic-prediction-gsm/datasets/raw_data/VAMOS/vamos_394-97_sample.csv"
+    DATA_FILE_PATH = "/home/ijaradar/Work/dl-trafic-prediction-gsm/datasets/raw_data/VAMOS/filtered_dataset_23.csv"
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--output_dir", type=str,
