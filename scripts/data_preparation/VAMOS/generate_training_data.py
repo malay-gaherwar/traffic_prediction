@@ -44,34 +44,18 @@ def generate_data(args: argparse.Namespace):
     train_ratio = args.train_ratio
     valid_ratio = args.valid_ratio
     data_file_path = args.data_file_path
-    steps_per_day = args.steps_per_day
     norm_each_channel = args.norm_each_channel
     if_rescale = not norm_each_channel
 
     # read data
     df = pd.read_csv(data_file_path)
-
-    # Convert 'time' column to datetime, with the correct format
-    df['Datetime'] = pd.to_datetime(df['time'], format='%Y-%m-%d %H:%M:%S')
-
-    # Set 'Datetime' as the index
-    df.set_index('Datetime', inplace=True)
-
-    # Keep only the s_idx and trafficVolumeLight columns
-    df = df[['s_idx', 'trafficVolumeLight']]
-
-    df_pivoted = df.pivot(columns='s_idx', values='trafficVolumeLight')
-
-    df_pivoted.columns.name = None
-    df_pivoted.index.name = None
-
-    df_resampled = df_pivoted.resample('5T').sum()
-    data = df_resampled.head(5000)
-
-    print("raw time series shape: ", data.shape)
-
-    # Reshape the data to add a third dimension for features
-    data = data.values[:, :, np.newaxis]  # Add a third dimension for features
+    df = df.set_index('Datetime')
+    df.index = pd.to_datetime(df.index)
+    df.index.name = None
+    data = np.expand_dims(df.values, axis=-1)
+    
+    data = data[..., target_channel]
+    print("raw time series shape: {0}".format(data.shape))
 
     # Now unpack the shape
     l, n, f = data.shape
@@ -103,26 +87,25 @@ def generate_data(args: argparse.Namespace):
     # add temporal feature
     feature_list = [data_norm]
     if add_time_of_day:
-        tod = (df_resampled.index.values - df_resampled.index.values.astype("datetime64[D]")) / np.timedelta64(1,
-                                                                                                                      "D")
-        tod_tiled = np.expand_dims(tod, axis=-1)
-        tod_tiled = np.repeat(tod_tiled, n, axis=1)
-        feature_list.append(np.expand_dims(tod_tiled, axis=-1))  # Ensure 3D shape
+        tod = (
+            df.index.values - df.index.values.astype("datetime64[D]")) / np.timedelta64(1, "D")
+        tod_tiled = np.tile(tod, [1, n, 1]).transpose((2, 1, 0))
+        feature_list.append(tod_tiled)
 
     if add_day_of_week:
-        dow = df_resampled.index.dayofweek / 7
+        dow = df.index.dayofweek / 7
         dow_tiled = np.expand_dims(dow, axis=-1)
         dow_tiled = np.repeat(dow_tiled, n, axis=1)
         feature_list.append(np.expand_dims(dow_tiled, axis=-1))  # Ensure 3D shape
 
     if add_day_of_month:
-        dom = (df_resampled.index.day - 1) / 31  # df.index.day starts from 1. We need to minus 1 to make it start from 0.
+        dom = (df.index.day - 1) / 31  # df.index.day starts from 1. We need to minus 1 to make it start from 0.
         dom_tiled = np.expand_dims(dom, axis=-1)
         dom_tiled = np.repeat(dom_tiled, n, axis=1)
         feature_list.append(np.expand_dims(dom_tiled, axis=-1))  # Ensure 3D shape
 
     if add_day_of_year:
-        doy = (df_resampled.index.dayofyear - 1) / 366  # df.index.month starts from 1. We need to minus 1 to make it start from 0.
+        doy = (df.index.dayofyear - 1) / 366  # df.index.month starts from 1. We need to minus 1 to make it start from 0.
         doy_tiled = np.expand_dims(doy, axis=-1)
         doy_tiled = np.repeat(doy_tiled, n, axis=1)
         feature_list.append(np.expand_dims(doy_tiled, axis=-1))  # Ensure 3D shape
@@ -159,8 +142,8 @@ if __name__ == "__main__":
 
     TRAIN_RATIO = 0.6
     VALID_RATIO = 0.2
-    TARGET_CHANNEL = [0, 1, 2, 3, 4, 5]  # target channels
-    STEPS_PER_DAY = 288
+    TARGET_CHANNEL = [0]  # target channels
+ 
 
     DATASET_NAME = "VAMOS"
     TOD = True  # if add time_of_day feature
@@ -169,7 +152,7 @@ if __name__ == "__main__":
     DOY = True  # if add day_of_year feature
 
     OUTPUT_DIR = "datasets/" + DATASET_NAME
-    DATA_FILE_PATH = "/home/ijaradar/Work/dl-trafic-prediction-gsm/datasets/raw_data/VAMOS/vamos_394-97_sample.csv"
+    DATA_FILE_PATH = "datasets/raw_data/VAMOS/sample.csv"
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--output_dir", type=str,
@@ -180,8 +163,6 @@ if __name__ == "__main__":
                         default=HISTORY_SEQ_LEN, help="Sequence Length.")
     parser.add_argument("--future_seq_len", type=int,
                         default=FUTURE_SEQ_LEN, help="Sequence Length.")
-    parser.add_argument("--steps_per_day", type=int,
-                        default=STEPS_PER_DAY, help="Sequence Length.")
     parser.add_argument("--tod", type=bool, default=TOD,
                         help="Add feature time_of_day.")
     parser.add_argument("--dow", type=bool, default=DOW,
